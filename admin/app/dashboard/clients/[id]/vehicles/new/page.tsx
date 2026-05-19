@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
+import { BRANDS, getModels, getGenerations } from '@/lib/cars'
 
 const GARAGE_ID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
 
@@ -13,10 +14,32 @@ export default function NewVehiclePage() {
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [form, setForm] = useState({ brand: '', model: '', year: '', plate: '' })
+  const [brand, setBrand] = useState('')
+  const [model, setModel] = useState('')
+  const [generation, setGeneration] = useState('')
+  const [customBrand, setCustomBrand] = useState('')
+  const [customModel, setCustomModel] = useState('')
+  const [year, setYear] = useState('')
+  const [plate, setPlate] = useState('')
 
-  function set(field: string, value: string) {
-    setForm(prev => ({ ...prev, [field]: value }))
+  const isOtherBrand = brand === '__other__'
+  const isOtherModel = model === '__other__'
+
+  const models = brand && !isOtherBrand ? getModels(brand) : []
+  const generations = brand && model && !isOtherBrand && !isOtherModel ? getGenerations(brand, model) : []
+
+  function handleBrandChange(val: string) {
+    setBrand(val)
+    setModel('')
+    setGeneration('')
+    setCustomBrand('')
+    setCustomModel('')
+  }
+
+  function handleModelChange(val: string) {
+    setModel(val)
+    setGeneration('')
+    setCustomModel('')
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -24,14 +47,23 @@ export default function NewVehiclePage() {
     setLoading(true)
     setError(null)
 
+    const finalBrand = isOtherBrand ? customBrand : brand
+    const finalModel = isOtherModel ? customModel : model
+
+    if (!finalBrand || !finalModel) {
+      setError('Marca y modelo son obligatorios')
+      setLoading(false)
+      return
+    }
+
     const supabase = createClient()
     const { error } = await supabase.from('vehicles').insert({
       client_id: clientId,
       garage_id: GARAGE_ID,
-      brand: form.brand,
-      model: form.model,
-      year: parseInt(form.year),
-      plate: form.plate.toUpperCase(),
+      brand: finalBrand,
+      model: finalModel + (generation ? ` — ${generation}` : ''),
+      year: parseInt(year),
+      plate: plate.toUpperCase(),
     })
 
     if (error) {
@@ -51,25 +83,71 @@ export default function NewVehiclePage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm text-[var(--muted)] mb-1.5">Marca *</label>
+          <select value={brand} onChange={e => handleBrandChange(e.target.value)} required className="input">
+            <option value="">Seleccioná una marca</option>
+            {BRANDS.map(b => (
+              <option key={b} value={b}>{b}</option>
+            ))}
+            <option value="__other__">Otra (escribir)</option>
+          </select>
+        </div>
+
+        {isOtherBrand && (
           <div>
-            <label className="block text-sm text-[var(--muted)] mb-1.5">Marca *</label>
-            <input required type="text" value={form.brand} onChange={e => set('brand', e.target.value)} className="input" placeholder="Toyota" />
+            <label className="block text-sm text-[var(--muted)] mb-1.5">Marca (escribir)</label>
+            <input type="text" value={customBrand} onChange={e => setCustomBrand(e.target.value)} className="input" placeholder="Ej: Alfa Romeo" required />
           </div>
+        )}
+
+        {(brand && !isOtherBrand) && (
           <div>
             <label className="block text-sm text-[var(--muted)] mb-1.5">Modelo *</label>
-            <input required type="text" value={form.model} onChange={e => set('model', e.target.value)} className="input" placeholder="Corolla" />
+            <select value={model} onChange={e => handleModelChange(e.target.value)} required className="input">
+              <option value="">Seleccioná un modelo</option>
+              {models.map(m => (
+                <option key={m.model} value={m.model}>{m.model}</option>
+              ))}
+              <option value="__other__">Otro (escribir)</option>
+            </select>
           </div>
-        </div>
+        )}
+
+        {isOtherBrand && (
+          <div>
+            <label className="block text-sm text-[var(--muted)] mb-1.5">Modelo (escribir)</label>
+            <input type="text" value={customModel} onChange={e => setCustomModel(e.target.value)} className="input" placeholder="Ej: Giulia QV" required />
+          </div>
+        )}
+
+        {isOtherModel && (
+          <div>
+            <label className="block text-sm text-[var(--muted)] mb-1.5">Modelo (escribir)</label>
+            <input type="text" value={customModel} onChange={e => setCustomModel(e.target.value)} className="input" placeholder="Ej: Shelby GT500KR" required />
+          </div>
+        )}
+
+        {(generations.length > 0) && (
+          <div>
+            <label className="block text-sm text-[var(--muted)] mb-1.5">Generación</label>
+            <select value={generation} onChange={e => setGeneration(e.target.value)} className="input">
+              <option value="">Sin especificar</option>
+              {generations.map(g => (
+                <option key={g} value={g}>{g}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm text-[var(--muted)] mb-1.5">Año *</label>
-            <input required type="number" min="1960" max="2030" value={form.year} onChange={e => set('year', e.target.value)} className="input" placeholder="2020" />
+            <input required type="number" min="1950" max="2030" value={year} onChange={e => setYear(e.target.value)} className="input" placeholder="2006" />
           </div>
           <div>
             <label className="block text-sm text-[var(--muted)] mb-1.5">Placa *</label>
-            <input required type="text" value={form.plate} onChange={e => set('plate', e.target.value)} className="input" placeholder="ABC123" />
+            <input required type="text" value={plate} onChange={e => setPlate(e.target.value)} className="input" placeholder="ABC123" />
           </div>
         </div>
 
